@@ -1,6 +1,8 @@
+pub mod channel;
 pub mod field;
 pub mod merkle_tree;
 pub mod polynomial;
+use channel::Channel;
 use chrono::Local;
 use field::{Field, FieldElement};
 use log::{Level, LevelFilter, Metadata, Record};
@@ -77,7 +79,8 @@ fn main() {
     log::info!("committing");
     // Commit to LDE
     let merkle_tree = MerkleTree::new(&evaluations);
-    println!("{:?}", merkle_tree.inner.root());
+    let mut channel = Channel::new();
+    channel.send(merkle_tree.inner.root().unwrap().to_vec());
     // Now we have commited to the LDE of the trace.
     // Generating constrainsts.
     // Converting polynomials to rational functions.
