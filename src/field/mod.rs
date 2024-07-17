@@ -241,4 +241,11 @@ mod test_field_operations {
         let b = FieldElement::new(2, field2);
         let _ = a + b;
     }
+
+    #[test]
+    fn test_negative_number() {
+        let field = Field::new(7);
+        let a = FieldElement::new(2, field);
+        assert_eq!((-a).0, 5);
+    }
 }

@@ -1,5 +1,5 @@
 [package]
-name = "stark101-rs"
+name = "stark101_rs"
 version = "0.1.0"
 edition = "2021"
 

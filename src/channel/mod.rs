@@ -15,7 +15,7 @@ impl Channel {
     }
 
     pub fn send(&mut self, s: Vec<u8>) {
-        let data_for_digest = format!("{}:{}", self.state, String::from_utf8(s.clone()).unwrap());
+        let data_for_digest = format!("{}:{:?}", self.state, s.clone());
         self.state = sha256::digest(data_for_digest);
         // in stark101 from starkware, we push parent function and s into the proof.
         // there is no straight forward way to know parent function in rust.

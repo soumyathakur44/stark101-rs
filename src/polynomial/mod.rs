@@ -1,5 +1,5 @@
 use crate::field::{Field, FieldElement};
-use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 // How should we be interpolating polynomials?
 // -> lagrange interpolation
 // -> iNTT inverse Number Theoretic Transformation
@@ -7,7 +7,8 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 // -> Normal evaluation
 // -> NTT Number Theoretic Transformation
 
-#[derive(Debug)]
+/// a_0 + a_1 * x + a_2 * x^2 + a_3 * x^3 + ... + a_n * x^n
+#[derive(Debug, Clone)]
 pub struct Polynomial {
     pub coefficients: Vec<FieldElement>,
     pub evaluation_form: Vec<(FieldElement, FieldElement)>,
@@ -41,24 +42,78 @@ impl Polynomial {
         self.coefficients.len() - 1
     }
 
-    pub fn scalar_mul(&self, scalar: FieldElement) -> Polynomial {
+    pub fn scalar_mul(&self, scalar: FieldElement) -> Self {
         let mut result = Vec::new();
 
         for i in 0..self.coefficients.len() {
             result.push(self.coefficients[i] * scalar);
         }
-
+        // self.coefficients = result.clone();
         Polynomial::new_from_coefficients(result)
     }
 
-    pub fn scalar_div(&self, scalar: FieldElement) -> Polynomial {
+    pub fn is_all_zeros(&self) -> bool {
+        for i in 0..self.coefficients.len() {
+            if self.coefficients[i].0 != 0 {
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn scalar_div(&self, scalar: FieldElement) -> Self {
         let mut result = Vec::new();
 
         for i in 0..self.coefficients.len() {
             result.push(self.coefficients[i] / scalar);
         }
-
+        // self.coefficients = result.clone();
         Polynomial::new_from_coefficients(result)
+    }
+
+    pub fn q_div(self, poly2: Self) -> (Self, Self) {
+        let mut q = Vec::new();
+        let field = Field::new(self.coefficients[0].modulus());
+        let n = self.coefficients.len();
+        let m = poly2.coefficients.len();
+        if n < m {
+            return (
+                Polynomial::new_from_coefficients(vec![FieldElement::new(0, field)]),
+                self,
+            );
+        }
+        let mut poly1_coeff = self.clone().coefficients;
+        let mut poly2_coeff = poly2.clone().coefficients;
+        poly1_coeff.reverse();
+        poly2_coeff.reverse();
+        for i in 0..n - m + 1 {
+            let mut other_coeff = poly2_coeff.clone();
+            other_coeff.append(&mut vec![FieldElement::new(0, field); n - m - i]);
+            let q_temp = poly1_coeff[0] / other_coeff[0];
+            let other_poly = Polynomial::new_from_coefficients(other_coeff).scalar_mul(q_temp);
+            poly1_coeff = (Polynomial::new_from_coefficients(poly1_coeff) - other_poly.clone())
+                .coefficients[1..]
+                .to_vec();
+            q.push(q_temp);
+        }
+        q.reverse();
+        poly1_coeff.reverse();
+        let poly1 = Polynomial::new_from_coefficients(poly1_coeff);
+        if poly1.is_all_zeros() {
+            return (
+                Polynomial::new_from_coefficients(q),
+                Polynomial::new_from_coefficients(vec![FieldElement::new(0, field)]),
+            );
+        } else {
+            return (Polynomial::new_from_coefficients(q), poly1);
+        }
+    }
+
+    pub fn compose(mut self, mono: FieldElement) -> Self {
+        for i in 0..self.coefficients.len() {
+            self.coefficients[i] *= mono.pow(i as u64);
+        }
+        return self;
     }
 }
 
@@ -199,17 +254,39 @@ impl MulAssign for Polynomial {
     }
 }
 
+impl Div for Polynomial {
+    type Output = Polynomial;
+
+    fn div(self, other: Polynomial) -> Polynomial {
+        let (q, r) = self.q_div(other);
+        if r.is_all_zeros() {
+            q
+        } else {
+            panic!("Division not possible");
+        }
+    }
+}
+
+impl DivAssign for Polynomial {
+    fn div_assign(&mut self, other: Polynomial) {
+        let (q, r) = self.clone().q_div(other);
+        if r.is_all_zeros() {
+            self.coefficients = q.coefficients;
+        } else {
+            panic!("Division not possible");
+        }
+    }
+}
+
 pub fn gen_polynomial_from_roots(roots: Vec<FieldElement>) -> Polynomial {
     let field = Field::new(roots[0].modulus());
-    let mut result = vec![FieldElement::new(0, field); roots.len() + 1];
-    result[0] = FieldElement::new(1, field);
+    let mut result = vec![FieldElement::new(1, field); 1];
     for i in 0..roots.len() {
-        let mut new_result = vec![FieldElement::new(0, field); roots.len() + 1];
+        let mut new_result = vec![FieldElement::new(0, field); 2];
         new_result[0] = -roots[i];
         new_result[1] = FieldElement::new(1, field);
         let new_polynomial = Polynomial::new_from_coefficients(new_result);
         result = (Polynomial::new_from_coefficients(result) * new_polynomial).coefficients;
-        log::info!("step {:?} in generating polynomial from roots", i);
     }
     Polynomial::new_from_coefficients(result[..roots.len() + 1].to_vec())
 }
@@ -222,7 +299,7 @@ pub fn gen_lagrange_polynomials(x: Vec<FieldElement>) -> Vec<Polynomial> {
         let mut denominator = Vec::new();
 
         let roots = &x[..i];
-        log::info!("generating polynomial from roots");
+        log::debug!("generating polynomial from roots, i:{:?}", i);
         let numerator = gen_polynomial_from_roots([roots, &x[i + 1..]].concat());
         for j in 0..n {
             if i == j {
@@ -360,6 +437,7 @@ mod test_polynomials {
         assert_eq!(result.coefficients[1].0, 0);
         assert_eq!(result.coefficients[2].0, 3);
     }
+
     #[test]
     fn test_mul() {
         let field = Field::new(7);
@@ -409,6 +487,7 @@ mod test_polynomials {
         assert_eq!(polynomial.coefficients[2].0, 1);
         assert_eq!(polynomial.coefficients[3].0, 1);
     }
+
     #[test]
     fn test_gen_lagrange_poly() {
         let field = Field::new(7);
@@ -473,9 +552,261 @@ mod test_polynomials {
             FieldElement::new(3, field),
         ];
         let result = interpolate_lagrange_polynomials(x, y);
-        println!("coeffs {:?}", result.coefficients);
         assert_eq!(result.coefficients[0].0, 5);
         assert_eq!(result.coefficients[1].0, 3);
         assert_eq!(result.coefficients[2].0, 1);
+    }
+
+    #[test]
+    fn test_qdiv() {
+        let field = Field::new(7);
+        let coefficients1 = vec![
+            FieldElement::new(1, field),
+            FieldElement::new(2, field),
+            FieldElement::new(3, field),
+            FieldElement::new(4, field),
+        ];
+        let coefficients2 = vec![
+            FieldElement::new(1, field),
+            FieldElement::new(2, field),
+            FieldElement::new(3, field),
+        ];
+        let polynomial1 = Polynomial::new_from_coefficients(coefficients1);
+        let polynomial2 = Polynomial::new_from_coefficients(coefficients2);
+        let (q, r) = polynomial1.q_div(polynomial2);
+        assert_eq!(q.coefficients.len(), 2);
+        assert_eq!(r.coefficients.len(), 2);
+        assert_eq!(q.coefficients[0].0, 4);
+        assert_eq!(q.coefficients[1].0, 6);
+        assert_eq!(r.coefficients[0].0, 4);
+        assert_eq!(r.coefficients[1].0, 2);
+    }
+
+    #[test]
+    fn test_qdiv2() {
+        let field = Field::new(7);
+
+        let coefficients1 = vec![
+            FieldElement::new(2, field),
+            FieldElement::new(1, field),
+            FieldElement::new(3, field),
+            FieldElement::new(0, field),
+            FieldElement::new(6, field),
+        ];
+
+        let coefficients2 = vec![
+            FieldElement::new(3, field),
+            FieldElement::new(5, field),
+            FieldElement::new(0, field),
+            FieldElement::new(4, field),
+        ];
+
+        let polynomial1 = Polynomial::new_from_coefficients(coefficients1);
+        let polynomial2 = Polynomial::new_from_coefficients(coefficients2);
+        let (q, r) = polynomial1.q_div(polynomial2);
+
+        assert_eq!(r.coefficients.len(), 3);
+        assert_eq!(q.coefficients.len(), 2);
+        assert_eq!(r.coefficients[0].0, 2);
+        assert_eq!(r.coefficients[1].0, 0);
+        assert_eq!(r.coefficients[2].0, 6);
+        assert_eq!(q.coefficients[0].0, 0);
+        assert_eq!(q.coefficients[1].0, 5);
+    }
+
+    #[test]
+    fn test_qdiv_same_n_m() {
+        let field = Field::new(7);
+        let coefficients1 = vec![
+            FieldElement::new(1, field),
+            FieldElement::new(2, field),
+            FieldElement::new(3, field),
+        ];
+        let coefficients2 = vec![
+            FieldElement::new(2, field),
+            FieldElement::new(3, field),
+            FieldElement::new(4, field),
+        ];
+
+        let polynomial1 = Polynomial::new_from_coefficients(coefficients1);
+        let polynomial2 = Polynomial::new_from_coefficients(coefficients2);
+
+        let (q, r) = polynomial1.q_div(polynomial2);
+        assert_eq!(q.coefficients.len(), 1);
+        assert_eq!(r.coefficients.len(), 2);
+        assert_eq!(q.coefficients[0].0, 6);
+        assert_eq!(r.coefficients[0].0, 3);
+        assert_eq!(r.coefficients[1].0, 5);
+    }
+
+    #[test]
+    fn test_qdiv_m_larger_than_n() {
+        let field = Field::new(7);
+        let coefficients1 = vec![
+            FieldElement::new(1, field),
+            FieldElement::new(2, field),
+            FieldElement::new(3, field),
+        ];
+        let coefficients2 = vec![
+            FieldElement::new(2, field),
+            FieldElement::new(3, field),
+            FieldElement::new(4, field),
+            FieldElement::new(5, field),
+        ];
+
+        let polynomial1 = Polynomial::new_from_coefficients(coefficients1);
+        let polynomial2 = Polynomial::new_from_coefficients(coefficients2);
+
+        let (q, r) = polynomial1.q_div(polynomial2);
+        assert_eq!(q.coefficients.len(), 1);
+        assert_eq!(r.coefficients.len(), 3);
+        assert_eq!(q.coefficients[0].0, 0);
+        assert_eq!(r.coefficients[0].0, 1);
+        assert_eq!(r.coefficients[1].0, 2);
+        assert_eq!(r.coefficients[2].0, 3);
+    }
+
+    #[test]
+    fn test_qdiv_no_remainder() {
+        let field = Field::new(7);
+
+        let coefficients1 = vec![
+            FieldElement::new(1, field),
+            FieldElement::new(2, field),
+            FieldElement::new(3, field),
+        ];
+
+        let coefficients2 = vec![
+            FieldElement::new(1, field),
+            FieldElement::new(2, field),
+            FieldElement::new(3, field),
+        ];
+
+        let polynomial1 = Polynomial::new_from_coefficients(coefficients1);
+        let polynomial2 = Polynomial::new_from_coefficients(coefficients2);
+
+        let (q, r) = polynomial1.q_div(polynomial2);
+
+        assert_eq!(q.coefficients.len(), 1);
+        assert_eq!(r.coefficients.len(), 1);
+        assert_eq!(q.coefficients[0].0, 1);
+        assert_eq!(r.coefficients[0].0, 0);
+    }
+
+    #[test]
+    fn test_div() {
+        let field = Field::new(7);
+
+        let coefficients1 = vec![
+            FieldElement::new(1, field),
+            FieldElement::new(2, field),
+            FieldElement::new(3, field),
+        ];
+
+        let coefficients2 = vec![
+            FieldElement::new(1, field),
+            FieldElement::new(2, field),
+            FieldElement::new(3, field),
+        ];
+
+        let polynomial1 = Polynomial::new_from_coefficients(coefficients1);
+        let polynomial2 = Polynomial::new_from_coefficients(coefficients2);
+
+        let result = polynomial1 / polynomial2;
+
+        assert_eq!(result.coefficients.len(), 1);
+        assert_eq!(result.coefficients[0].0, 1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_div_not_possible() {
+        let field = Field::new(7);
+
+        let coefficients1 = vec![
+            FieldElement::new(1, field),
+            FieldElement::new(2, field),
+            FieldElement::new(3, field),
+        ];
+
+        let coefficients2 = vec![
+            FieldElement::new(2, field),
+            FieldElement::new(3, field),
+            FieldElement::new(4, field),
+        ];
+
+        let polynomial1 = Polynomial::new_from_coefficients(coefficients1);
+        let polynomial2 = Polynomial::new_from_coefficients(coefficients2);
+
+        let _ = polynomial1 / polynomial2;
+    }
+
+    #[test]
+    fn test_div_assign() {
+        let field = Field::new(7);
+
+        let coefficients1 = vec![
+            FieldElement::new(1, field),
+            FieldElement::new(2, field),
+            FieldElement::new(3, field),
+        ];
+
+        let coefficients2 = vec![
+            FieldElement::new(1, field),
+            FieldElement::new(2, field),
+            FieldElement::new(3, field),
+        ];
+
+        let mut polynomial1 = Polynomial::new_from_coefficients(coefficients1);
+        let polynomial2 = Polynomial::new_from_coefficients(coefficients2);
+
+        polynomial1 /= polynomial2;
+
+        assert_eq!(polynomial1.coefficients.len(), 1);
+        assert_eq!(polynomial1.coefficients[0].0, 1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_div_assign_not_possible() {
+        let field = Field::new(7);
+
+        let coefficients1 = vec![
+            FieldElement::new(1, field),
+            FieldElement::new(2, field),
+            FieldElement::new(3, field),
+        ];
+
+        let coefficients2 = vec![
+            FieldElement::new(2, field),
+            FieldElement::new(3, field),
+            FieldElement::new(4, field),
+        ];
+
+        let mut polynomial1 = Polynomial::new_from_coefficients(coefficients1);
+        let polynomial2 = Polynomial::new_from_coefficients(coefficients2);
+
+        polynomial1 /= polynomial2;
+    }
+
+    #[test]
+    fn test_mono_compose() {
+        let field = Field::new(7);
+
+        let coefficients = vec![
+            FieldElement::new(1, field),
+            FieldElement::new(2, field),
+            FieldElement::new(3, field),
+        ];
+
+        let polynomial = Polynomial::new_from_coefficients(coefficients);
+
+        let mono = FieldElement::new(4, field);
+
+        let polynomial = polynomial.compose(mono);
+
+        assert_eq!(polynomial.coefficients[0].0, 1);
+        assert_eq!(polynomial.coefficients[1].0, 1);
+        assert_eq!(polynomial.coefficients[2].0, 6);
     }
 }
