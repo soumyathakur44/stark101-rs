@@ -8,6 +8,7 @@
 use crate::field::FieldElement;
 use rs_merkle::{algorithms::Sha256, Hasher, MerkleProof, MerkleTree as MerkleTreeTrait};
 
+#[derive(Clone)]
 pub struct MerkleTree {
     pub data: Vec<FieldElement>,
     pub leaves: Vec<[u8; 32]>,
@@ -39,5 +40,25 @@ impl MerkleTree {
         let merkle_root = self.inner.root().unwrap();
         let leaf_to_prove = self.leaves.get(index).unwrap();
         proof.verify(merkle_root, &[index], &[*leaf_to_prove], self.leaves.len())
+    }
+}
+
+#[cfg(test)]
+mod test_merkle_implementation {
+    use crate::field::{Field, FieldElement};
+    #[test]
+    fn test_merkle_tree() {
+        let field = Field::new(7);
+        let data = vec![
+            FieldElement::new(1, field),
+            FieldElement::new(2, field),
+            FieldElement::new(3, field),
+            FieldElement::new(4, field),
+            FieldElement::new(5, field),
+            FieldElement::new(6, field),
+        ];
+        let merkle_tree = super::MerkleTree::new(&data);
+        let proof = merkle_tree.get_authentication_path(0);
+        assert_eq!(merkle_tree.validate(proof, 0), true);
     }
 }

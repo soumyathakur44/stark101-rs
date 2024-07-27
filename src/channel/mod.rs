@@ -15,6 +15,7 @@ impl Channel {
     }
 
     pub fn send(&mut self, s: Vec<u8>) {
+        log::debug!("sending to channel");
         let data_for_digest = format!("{}:{:?}", self.state, s.clone());
         self.state = sha256::digest(data_for_digest);
         // in stark101 from starkware, we push parent function and s into the proof.
@@ -24,6 +25,7 @@ impl Channel {
 
     pub fn receive_random_field_element(&mut self, field: Field) -> FieldElement {
         let received_int = self.receive_random_int(0, field.0 - 1, true);
+        log::debug!("received_int: {}", received_int);
         FieldElement::new(received_int, field)
     }
 

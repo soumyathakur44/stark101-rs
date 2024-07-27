@@ -1,3 +1,5 @@
+use chrono::Local;
+
 use crate::field::{Field, FieldElement};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 // How should we be interpolating polynomials?
@@ -321,6 +323,7 @@ pub fn gen_lagrange_polynomials(x: Vec<FieldElement>) -> Vec<Polynomial> {
 pub fn interpolate_lagrange_polynomials(x: Vec<FieldElement>, y: Vec<FieldElement>) -> Polynomial {
     let n = x.len();
     log::info!("generating lagrange polynomials");
+    let start_time = Local::now();
     let lagrange_polynomials = gen_lagrange_polynomials(x.clone());
     let field = Field::new(x[0].modulus());
     let mut result = Polynomial::new_from_coefficients(vec![FieldElement::new(0, field); n]);
@@ -328,7 +331,10 @@ pub fn interpolate_lagrange_polynomials(x: Vec<FieldElement>, y: Vec<FieldElemen
     for i in 0..n {
         result += lagrange_polynomials[i].scalar_mul(y[i]);
     }
-
+    log::info!(
+        "lagrange polynomials generated in {:?}µs",
+        (Local::now() - start_time).num_microseconds().unwrap()
+    );
     result
 }
 

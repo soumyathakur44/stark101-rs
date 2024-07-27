@@ -64,6 +64,24 @@ impl FieldElement {
         }
         FieldElement(res % self.1 .0, self.1)
     }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut e = self.0.to_be_bytes().to_vec();
+        let mut f = self.1 .0.to_be_bytes().to_vec();
+        e.append(&mut f);
+        e
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> FieldElement {
+        let mut x = [0u8; 8];
+        let mut y = [0u8; 8];
+        x.copy_from_slice(&bytes[..8]);
+        y.copy_from_slice(&bytes[8..]);
+        FieldElement(
+            u64::from_be_bytes(x) % u64::from_be_bytes(y),
+            Field(u64::from_be_bytes(y)),
+        )
+    }
 }
 
 impl Add for FieldElement {
@@ -176,6 +194,7 @@ impl Neg for FieldElement {
         FieldElement(self.1 .0 - self.0, self.1)
     }
 }
+
 #[cfg(test)]
 mod test_field_operations {
     use super::*;
