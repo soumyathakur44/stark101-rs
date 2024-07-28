@@ -1,9 +1,12 @@
-use alloy::primitives::U256;
+use alloy::{hex::ToHexExt, primitives::U256};
 
 use crate::field::{Field, FieldElement};
 pub struct Channel {
     pub state: String,
+    // proof contains all the messages that are exchanged between prover and verifier.
     pub proof: Vec<Vec<u8>>,
+    // compressed proof contains only the messages that are sent from prover to verifier.
+    pub compressed_proof: Vec<Vec<u8>>,
 }
 
 impl Channel {
@@ -11,6 +14,7 @@ impl Channel {
         Channel {
             state: String::new(),
             proof: Vec::new(),
+            compressed_proof: Vec::new(),
         }
     }
 
@@ -20,7 +24,8 @@ impl Channel {
         self.state = sha256::digest(data_for_digest);
         // in stark101 from starkware, we push parent function and s into the proof.
         // there is no straight forward way to know parent function in rust.
-        self.proof.push(s)
+        self.proof.push(s.clone());
+        self.compressed_proof.push(s);
     }
 
     pub fn receive_random_field_element(&mut self, field: Field) -> FieldElement {
@@ -33,11 +38,28 @@ impl Channel {
         // convert state to hexadecimal number
         let num = (U256::from(min) + U256::from_str_radix(&self.state, 16).unwrap())
             % U256::from(max - min + 1);
-        let state = self.state.clone() + num.to_string().as_str();
+        let t_num = min + num.into_limbs()[0];
+        let state = self.state.clone() + &t_num.to_be_bytes().to_vec().encode_hex();
         self.state = sha256::digest(state);
         if show_in_proof {
-            self.proof.push(num.to_string().into_bytes());
+            self.proof.push(num.into_limbs()[0].to_be_bytes().to_vec());
         }
-        num.into_limbs()[0]
+        min + num.into_limbs()[0]
+    }
+
+    pub fn proof_size(&self) -> usize {
+        let mut size = 0;
+        for proof in &self.proof {
+            size += proof.len();
+        }
+        size
+    }
+
+    pub fn compressed_proof_size(&self) -> usize {
+        let mut size = 0;
+        for proof in &self.compressed_proof {
+            size += proof.len();
+        }
+        size
     }
 }

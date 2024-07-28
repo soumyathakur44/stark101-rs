@@ -124,12 +124,7 @@ pub fn fri_commit(
     }
 
     // send the last layers free term to the verifier
-    channel.send(
-        fri_polys[fri_polys.len() - 1].coefficients[0]
-            .0
-            .to_be_bytes()
-            .to_vec(),
-    );
+    channel.send(fri_layers[fri_layers.len() - 1][0].to_bytes());
     (fri_polys, fri_domains, fri_layers, fri_merkle)
 }
 
@@ -153,9 +148,9 @@ pub fn decommit_fri_layers(
     {
         log::debug!("sending elements and merkle proofs for layer");
         let length = layer.len();
-        let layer_idx = idx % length;
-        channel.send(layer[layer_idx].to_bytes());
-        let proof = merkle.get_authentication_path(layer_idx);
+        let elem_idx = idx % length;
+        channel.send(layer[elem_idx].to_bytes());
+        let proof = merkle.get_authentication_path(elem_idx);
         channel.send(proof);
         let sibling_idx = (idx + length / 2) % length;
         channel.send(layer[sibling_idx].to_bytes());

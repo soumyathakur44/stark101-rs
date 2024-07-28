@@ -1,6 +1,7 @@
 use chrono::Local;
 
 use crate::field::{Field, FieldElement};
+use rayon::prelude::*;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 // How should we be interpolating polynomials?
 // -> lagrange interpolation
@@ -296,7 +297,6 @@ pub fn gen_polynomial_from_roots(roots: Vec<FieldElement>) -> Polynomial {
 pub fn gen_lagrange_polynomials(x: Vec<FieldElement>) -> Vec<Polynomial> {
     let n = x.len();
     let mut lagrange_polynomials = Vec::new();
-
     for i in 0..n {
         let mut denominator = Vec::new();
 
@@ -320,18 +320,49 @@ pub fn gen_lagrange_polynomials(x: Vec<FieldElement>) -> Vec<Polynomial> {
     lagrange_polynomials
 }
 
+pub fn gen_lagrange_polynomials_parallel(x: Vec<FieldElement>) -> Vec<Polynomial> {
+    let n = x.len();
+    let lagrange_polynomials = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            let mut denominator = Vec::new();
+
+            let roots = &x[..i];
+            log::debug!("generating polynomial from roots, i:{:?}", i);
+            let numerator = gen_polynomial_from_roots([roots, &x[i + 1..]].concat());
+
+            for j in 0..n {
+                if i == j {
+                    continue;
+                }
+                denominator.push(x[i] - x[j]);
+            }
+
+            let den_sum = denominator.iter().fold(
+                FieldElement::new(1, Field::new(x[i].modulus())),
+                |acc, x| acc * *x,
+            );
+
+            let lagrange_polynomial = numerator.scalar_div(den_sum);
+            lagrange_polynomial
+        })
+        .collect();
+
+    lagrange_polynomials
+}
+
 pub fn interpolate_lagrange_polynomials(x: Vec<FieldElement>, y: Vec<FieldElement>) -> Polynomial {
     let n = x.len();
-    log::info!("generating lagrange polynomials");
+    log::debug!("generating lagrange polynomials");
     let start_time = Local::now();
-    let lagrange_polynomials = gen_lagrange_polynomials(x.clone());
+    let lagrange_polynomials = gen_lagrange_polynomials_parallel(x.clone());
     let field = Field::new(x[0].modulus());
     let mut result = Polynomial::new_from_coefficients(vec![FieldElement::new(0, field); n]);
 
     for i in 0..n {
         result += lagrange_polynomials[i].scalar_mul(y[i]);
     }
-    log::info!(
+    log::debug!(
         "lagrange polynomials generated in {:?}µs",
         (Local::now() - start_time).num_microseconds().unwrap()
     );

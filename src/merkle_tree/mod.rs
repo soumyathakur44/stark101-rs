@@ -19,7 +19,7 @@ impl MerkleTree {
     pub fn new(data: &[FieldElement]) -> MerkleTree {
         let leaves: Vec<[u8; 32]> = data
             .into_iter()
-            .map(|x| Sha256::hash(&x.0.to_be_bytes()))
+            .map(|x| Sha256::hash(&x.to_bytes()))
             .collect();
         let merkle_tree = MerkleTreeTrait::<Sha256>::from_leaves(&leaves);
         MerkleTree {
@@ -35,16 +35,24 @@ impl MerkleTree {
         proof.to_bytes()
     }
 
-    pub fn validate(&self, proof_bytes: Vec<u8>, index: usize) -> bool {
+    pub fn validate(
+        merkle_root: Vec<u8>,
+        proof_bytes: Vec<u8>,
+        index: usize,
+        leaf: Vec<u8>,
+        len: usize,
+    ) -> bool {
         let proof = MerkleProof::<Sha256>::try_from(proof_bytes).unwrap();
-        let merkle_root = self.inner.root().unwrap();
-        let leaf_to_prove = self.leaves.get(index).unwrap();
-        proof.verify(merkle_root, &[index], &[*leaf_to_prove], self.leaves.len())
+
+        let leaves = vec![Sha256::hash(&leaf)];
+        let merkle_root = merkle_root.as_slice()[..32].try_into().unwrap();
+        proof.verify(merkle_root, &[index], &leaves, len)
     }
 }
 
 #[cfg(test)]
 mod test_merkle_implementation {
+    use super::MerkleTree;
     use crate::field::{Field, FieldElement};
     #[test]
     fn test_merkle_tree() {
@@ -58,7 +66,11 @@ mod test_merkle_implementation {
             FieldElement::new(6, field),
         ];
         let merkle_tree = super::MerkleTree::new(&data);
+        let merkle_root = merkle_tree.inner.root().unwrap().to_vec();
         let proof = merkle_tree.get_authentication_path(0);
-        assert_eq!(merkle_tree.validate(proof, 0), true);
+        assert_eq!(
+            MerkleTree::validate(merkle_root, proof, 0, data[0].to_bytes(), 6),
+            true
+        );
     }
 }

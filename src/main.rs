@@ -3,6 +3,8 @@ pub mod field;
 pub mod merkle_tree;
 pub mod polynomial;
 pub mod utils;
+pub mod verifier;
+
 use channel::Channel;
 use chrono::Local;
 use field::{Field, FieldElement};
@@ -10,6 +12,7 @@ use log::{Level, LevelFilter, Metadata, Record};
 use merkle_tree::MerkleTree;
 use polynomial::{interpolate_lagrange_polynomials, Polynomial};
 use utils::{decommit_fri, fri_commit, generate_eval_domain_for_trace, generate_trace};
+use verifier::verify_proof;
 static CONSOLE_LOGGER: ConsoleLogger = ConsoleLogger;
 struct ConsoleLogger;
 
@@ -55,28 +58,27 @@ fn main() {
     let field = Field::new(prime_modulus);
     let start_time = Local::now();
     // 1. Generating Input
-    log::info!("Generating trace, time: {}", start_time);
+    log::info!("Generating trace");
     let a0 = FieldElement::new(1, field);
     let a1 = FieldElement::new(3141592, field);
     let trace = generate_trace(a0, a1, 1023);
     // get full trace paired with evaluation domain
     let generator = FieldElement::new(5, field).pow(3 * 2u64.pow(20));
     let eval_domain = generate_eval_domain_for_trace(&trace, generator);
+
     // 2. Interpolate
     log::info!("Interpolating");
-    let trace_polynomial = interpolate_lagrange_polynomials(eval_domain, trace);
+    let trace_polynomial = interpolate_lagrange_polynomials(eval_domain[..1023].to_vec(), trace);
     // 3. Extend
     log::info!("Extending");
-    let w = generator;
+    let w = FieldElement::new(5, field);
     let two = FieldElement::new(2, field);
     let exp = two.pow(30) * FieldElement(3, field) / FieldElement(8192, field);
     let h = w.pow(exp.0);
-
     #[allow(non_snake_case)]
     let H: Vec<FieldElement> = (0..8192).into_iter().map(|i| h.pow(i)).collect();
     let eval_domain: Vec<FieldElement> = H.into_iter().map(|h| w * h).collect();
-
-    let evaluations: Vec<FieldElement> = eval_domain
+    let f_evaluations: Vec<FieldElement> = eval_domain
         .clone()
         .into_iter()
         .map(|h| trace_polynomial.evaluate(h))
@@ -84,13 +86,13 @@ fn main() {
 
     // Commit to LDE
     log::info!("committing to LDE");
-    let merkle_tree = MerkleTree::new(&evaluations);
+    let f_merkle_tree = MerkleTree::new(&f_evaluations);
     let mut channel = Channel::new();
     // Sending merkle root to channel i.e. verifier
     // channel acts as verifier, simulates verifier, in proof generation of non-interactive proving setup. and vice versa for proof verification
     // to convert interactive proving to non interactive proving, fiat shamir heuristic is used.
     // with fiat shamir heuristic, the channel is deterministic for both prover and verifier.
-    channel.send(merkle_tree.inner.root().unwrap().to_vec());
+    channel.send(f_merkle_tree.inner.root().unwrap().to_vec());
 
     // Now we have commited to the LDE of the trace.
     // Generating constrainsts.
@@ -157,24 +159,23 @@ fn main() {
     let alpha_1 = channel.receive_random_field_element(field);
     let alpha_2 = channel.receive_random_field_element(field);
 
-    log::info!("construting compositon polynomial c_p");
+    log::debug!("construting compositon polynomial c_p");
     let c_p = Polynomial::new_from_coefficients(vec![alpha_0]) * p_0
         + Polynomial::new_from_coefficients(vec![alpha_1]) * p_1
         + Polynomial::new_from_coefficients(vec![alpha_2]) * p_2;
 
     assert_eq!(c_p.degree(), 1023);
-
     log::info!("committing to composition polynomial");
 
     // we commit to composition polynomial by evaluating it over the evaluation domain, which is the coset.
-    let evaluations: Vec<FieldElement> = eval_domain
+    let cp_evaluations: Vec<FieldElement> = eval_domain
         .clone()
         .into_iter()
         .map(|h| c_p.evaluate(h))
         .collect();
-    let merkle_tree = MerkleTree::new(&evaluations);
+    let cp_merkle_tree = MerkleTree::new(&cp_evaluations);
     // sending merkle root to channel i.e. verifier
-    channel.send(merkle_tree.inner.root().unwrap().to_vec());
+    channel.send(cp_merkle_tree.inner.root().unwrap().to_vec());
 
     // Now we have commited to the composition polynomial.
     // Composition polynomial will be a polynomial only if all the 3 contraints are satisfied.
@@ -216,8 +217,8 @@ fn main() {
     let (fri_polys, _, fri_layers, fri_merkle_trees) = fri_commit(
         c_p,
         &eval_domain,
-        &evaluations,
-        merkle_tree.clone(),
+        &cp_evaluations,
+        cp_merkle_tree.clone(),
         &mut channel,
     );
 
@@ -235,19 +236,32 @@ fn main() {
     // with each successful query and valid decommitment, verifiers confidence in the proof increases.
 
     log::info!("decommitting fri layers");
+    let (num_of_queries, blow_up_factor, maximum_random_int) = (4, 8, 8192 - 16);
     decommit_fri(
-        4,
-        8,
+        num_of_queries,
+        blow_up_factor,
         8192 - 16,
-        &evaluations,
-        &merkle_tree,
+        &f_evaluations,
+        &f_merkle_tree,
         &fri_layers,
         &fri_merkle_trees,
         &mut channel,
     );
-    let time_taken = Local::now() - start_time;
+
     log::info!(
-        "proof generation complete, time taken: {}ms",
-        time_taken.num_milliseconds()
+        "proof generation complete, time taken: {}ms, proof size: {} bytes, compressed proof size: {} bytes",
+        (Local::now() - start_time).num_milliseconds(),
+        channel.proof_size(),
+        channel.compressed_proof_size()
+    );
+
+    let compressed_proof = channel.compressed_proof;
+
+    verify_proof(
+        num_of_queries,
+        maximum_random_int,
+        blow_up_factor,
+        field,
+        &compressed_proof,
     );
 }
