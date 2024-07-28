@@ -106,7 +106,6 @@ pub fn fri_commit(
     let mut fri_merkle = vec![merkle_root];
 
     let field = composition_poynomial.coefficients[0].1;
-
     while (fri_polys[fri_polys.len() - 1]).degree() > 0 {
         let beta = channel.receive_random_field_element(field);
         let (next_poly, next_eval_domain, next_layer) = next_fri_layer(
@@ -160,7 +159,7 @@ pub fn decommit_fri_layers(
 
     // send the last layer element.
     log::debug!("sending element of last layer");
-    channel.send(fri_layers.last().unwrap()[0].to_bytes())
+    channel.send(fri_layers.last().unwrap()[0].to_bytes());
 }
 
 /// sends
@@ -179,11 +178,11 @@ pub fn decommit_on_query(
     assert!(idx + 2 * blow_up_factor < f_eval.len());
     channel.send(f_eval[idx].to_bytes()); // f(x)
     channel.send(f_merkle.get_authentication_path(idx)); // merkle proof for f(x)
-    channel.send(f_eval[idx + 8].to_bytes()); // f(g*x)
+    channel.send(f_eval[idx + blow_up_factor].to_bytes()); // f(g*x)
     channel.send(f_merkle.get_authentication_path(idx + blow_up_factor)); // merkle proof for f(g*x)
-    channel.send(f_eval[idx + 16].to_bytes()); // f(g^2 * x)
+    channel.send(f_eval[idx + 2 * blow_up_factor].to_bytes()); // f(g^2 * x)
     channel.send(f_merkle.get_authentication_path(idx + 2 * blow_up_factor)); // merkle proof for f(g^2 * x)
-    decommit_fri_layers(idx, fri_layers, fri_merkle, channel);
+    decommit_fri_layers(idx, fri_layers, fri_merkle, channel)
 }
 
 /// decommits for each query x and provides consistency proof for the fri layers.

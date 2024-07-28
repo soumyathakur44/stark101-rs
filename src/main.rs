@@ -214,7 +214,7 @@ fn main() {
 
     // generate fri layers and commit to the fri layers.
     log::info!("generating fri layers and fri commitments");
-    let (fri_polys, _fri_domains, fri_layers, fri_merkle_trees) = fri_commit(
+    let (fri_polys, fri_domains, fri_layers, fri_merkle_trees) = fri_commit(
         c_p,
         &eval_domain,
         &cp_evaluations,
@@ -257,6 +257,7 @@ fn main() {
 
     let compressed_proof = channel.compressed_proof;
 
+    // verify the proof
     log::info!("verifying proof");
     let start = Local::now();
     verify_proof(
@@ -264,6 +265,7 @@ fn main() {
         maximum_random_int,
         blow_up_factor,
         field,
+        &fri_domains,
         &compressed_proof,
     );
 

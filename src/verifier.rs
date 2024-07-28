@@ -8,6 +8,7 @@ pub fn verify_proof(
     maximum_random_int: u64,
     blow_up_factor: usize,
     field: Field,
+    fri_domains: &[Vec<FieldElement>],
     compressed_proof: &[Vec<u8>],
 ) {
     let mut channel = Channel::new();
@@ -48,7 +49,9 @@ pub fn verify_proof(
             base_idx + i,
             idx,
             blow_up_factor,
+            field,
             &fri_merkle_roots,
+            &fri_domains,
             compressed_proof,
             &betas,
             &mut channel,
@@ -60,9 +63,11 @@ pub fn verify_proof(
 pub fn verify_fri_layers(
     base_idx: usize,
     idx: usize,
+    field: Field,
     fri_merkle_roots: &[Vec<u8>],
+    fri_domains: &[Vec<FieldElement>],
     compressed_proof: &[Vec<u8>],
-    _betas: &[FieldElement],
+    betas: &[FieldElement],
     channel: &mut Channel,
 ) {
     let lengths = vec![8192, 4096, 2048, 1024, 512, 256, 128, 64, 32, 16];
@@ -79,6 +84,18 @@ pub fn verify_fri_layers(
         } else {
             fri_merkle_roots[i - 1].clone()
         };
+        if i != 0 {
+            // checking fri polynomials consistency.
+            let prev_elem =
+                FieldElement::from_bytes(&compressed_proof[base_idx + 4 * (i - 1)].clone());
+            let prev_sibling =
+                FieldElement::from_bytes(&compressed_proof[base_idx + 4 * (i - 1) + 2].clone());
+            let two = FieldElement::new(2, field);
+            let computed_elem = (prev_elem + prev_sibling) / two
+                + (betas[i - 1] * (prev_elem - prev_sibling)
+                    / (two * fri_domains[i - 1][idx % lengths[i - 1]]));
+            assert!(computed_elem.0 == FieldElement::from_bytes(&elem).0);
+        }
         assert!(MerkleTree::validate(
             merkle_root.clone(),
             elem_proof,
@@ -108,7 +125,9 @@ pub fn verify_queries(
     base_idx: usize,
     idx: usize,
     blow_up_factor: usize,
+    field: Field,
     fri_merkle_roots: &[Vec<u8>],
+    fri_domains: &[Vec<FieldElement>],
     compressed_proof: &[Vec<u8>],
     betas: &[FieldElement],
     channel: &mut Channel,
@@ -155,7 +174,9 @@ pub fn verify_queries(
     verify_fri_layers(
         base_idx + 6,
         idx,
+        field,
         fri_merkle_roots,
+        fri_domains,
         compressed_proof,
         betas,
         channel,

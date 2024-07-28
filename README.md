@@ -6,7 +6,7 @@ I have added comments here and there explaining the code, but I recommend going 
 
 The only changes I have made are for parallel computing lagrange polynomials, and implemented the verifier.
 
-## Structure
+## Structure:
 
 - [main.rs](./src/main.rs) - Code for executing prover and verifier.
 - [utils.rs](./src/utils.rs) - All the useful functions are here.
@@ -15,3 +15,8 @@ The only changes I have made are for parallel computing lagrange polynomials, an
 - [merkle tree](./src/merkle_tree/) - A wrapper around, rs_merkle crate.
 - [channel](./src/channel/) - Simulates prover and verifier inteactions.
 - [verifier](./src/verifier.rs) - verifier for verifying fibonnaci square programe.
+
+## Fri resources:
+
+- [How to code fri from scratch](https://blog.lambdaclass.com/how-to-code-fri-from-scratch/)
+- [A summary on the fri low degree testing](https://eprint.iacr.org/2022/1216.pdf)
