@@ -10,7 +10,6 @@ pub fn verify_proof(
     field: Field,
     compressed_proof: &[Vec<u8>],
 ) {
-    log::info!("verifying proof");
     let mut channel = Channel::new();
 
     // merkle root of trace polynomial LDE
@@ -49,8 +48,8 @@ pub fn verify_proof(
             base_idx + i,
             idx,
             blow_up_factor,
-            compressed_proof,
             &fri_merkle_roots,
+            compressed_proof,
             &betas,
             &mut channel,
         );
@@ -61,28 +60,18 @@ pub fn verify_proof(
 pub fn verify_fri_layers(
     base_idx: usize,
     idx: usize,
-    compressed_proof: &[Vec<u8>],
     fri_merkle_roots: &[Vec<u8>],
-    betas: &[FieldElement],
+    compressed_proof: &[Vec<u8>],
+    _betas: &[FieldElement],
     channel: &mut Channel,
 ) {
     let lengths = vec![8192, 4096, 2048, 1024, 512, 256, 128, 64, 32, 16];
-    let mut next_elem = FieldElement::new(0, Field::new(7));
     for i in 0..10 {
         // verify the fri layers
         let length = lengths[i];
         let elem_idx = idx % length;
         let elem = compressed_proof[base_idx + 4 * i].clone();
         channel.send(elem.clone());
-        // if i != 0 {
-        //     println!(
-        //         "next_elem: {:?}, i: {}, elem:{:?}",
-        //         next_elem,
-        //         i,
-        //         FieldElement::from_bytes(&elem)
-        //     );
-        //     assert!(next_elem.to_bytes() == elem);
-        // }
         let elem_proof = compressed_proof[base_idx + 4 * i + 1].clone();
         channel.send(elem_proof.clone());
         let merkle_root = if i == 0 {
@@ -102,6 +91,7 @@ pub fn verify_fri_layers(
         channel.send(sibling.clone());
         let sibling_proof = compressed_proof[base_idx + 4 * i + 3].clone();
         channel.send(sibling_proof.clone());
+
         assert!(MerkleTree::validate(
             merkle_root,
             sibling_proof,
@@ -109,15 +99,6 @@ pub fn verify_fri_layers(
             sibling.clone(),
             length,
         ));
-        // let elem_f = FieldElement::from_bytes(&elem);
-        // let sibling_f = FieldElement::from_bytes(&sibling);
-        // let two = FieldElement::new(2, elem_f.1);
-        // // let elem_idx_f = FieldElement::new(elem_idx as u64, elem_f.1);
-
-        // let g_x = (elem_f + sibling_f) / two;
-        // let h_x = (elem_f - sibling_f) / (two * elem_f.pow(2));
-
-        // next_elem = g_x + (betas[i] * h_x);
     }
     let last_elem = compressed_proof[base_idx + 40].clone();
     channel.send(last_elem);
@@ -127,8 +108,8 @@ pub fn verify_queries(
     base_idx: usize,
     idx: usize,
     blow_up_factor: usize,
-    compressed_proof: &[Vec<u8>],
     fri_merkle_roots: &[Vec<u8>],
+    compressed_proof: &[Vec<u8>],
     betas: &[FieldElement],
     channel: &mut Channel,
 ) {
@@ -174,8 +155,8 @@ pub fn verify_queries(
     verify_fri_layers(
         base_idx + 6,
         idx,
-        compressed_proof,
         fri_merkle_roots,
+        compressed_proof,
         betas,
         channel,
     );

@@ -100,7 +100,7 @@ fn main() {
     // Build compostion polynomial and commit to composition polynomial.
     // p_0(x) = f(x) - 1 / x - g^0
     // p_1(x) = f(x) - 2338775057 / x - g^1022
-    // p_2(x) = f(g^2x) - f(gx)^2 - f(x)^2 / [(x^1024 - 1)/(x-g^1021)(x-g^1022)(x-g^1023)
+    // p_2(x) = f(g^2x) - f(gx)^2 - f(x)^2 / [(x^1024 - 1)/(x-g^1021)(x-g^1022)(x-g^1023)]
 
     // c_p = alpha_0 * p_0(x) + alpha_1 * p_1(x) + alpha_2 * p_2(x)
     log::info!("generating constraint polynomials");
@@ -214,7 +214,7 @@ fn main() {
 
     // generate fri layers and commit to the fri layers.
     log::info!("generating fri layers and fri commitments");
-    let (fri_polys, _, fri_layers, fri_merkle_trees) = fri_commit(
+    let (fri_polys, _fri_domains, fri_layers, fri_merkle_trees) = fri_commit(
         c_p,
         &eval_domain,
         &cp_evaluations,
@@ -257,11 +257,18 @@ fn main() {
 
     let compressed_proof = channel.compressed_proof;
 
+    log::info!("verifying proof");
+    let start = Local::now();
     verify_proof(
         num_of_queries,
         maximum_random_int,
         blow_up_factor,
         field,
         &compressed_proof,
+    );
+
+    log::info!(
+        "verification successful, time taken: {:?}µs",
+        (Local::now() - start).num_microseconds().unwrap()
     );
 }

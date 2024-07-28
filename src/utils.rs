@@ -226,7 +226,7 @@ pub fn decommit_fri(
 
 #[cfg(test)]
 mod test_fri_layer {
-    use crate::*;
+    use crate::{field::Field, utils::*};
     #[test]
     fn test_fri() {
         let field = Field::new(7);
@@ -238,8 +238,7 @@ mod test_fri_layer {
         ]);
         let domain = vec![FieldElement::new(2, field), FieldElement::new(5, field)];
         let beta = FieldElement(3, field);
-        let (next_poly, next_eval_domain, next_evaluations) =
-            utils::next_fri_layer(&poly, beta, &domain);
+        let (next_poly, next_eval_domain, next_evaluations) = next_fri_layer(&poly, beta, &domain);
         assert_eq!(next_poly.coefficients.len(), 2);
         assert_eq!(next_poly.coefficients[0].0, 4);
         assert_eq!(next_poly.coefficients[1].0, 3);
