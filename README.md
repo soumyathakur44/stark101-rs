@@ -4,7 +4,7 @@ This repository contains rust version of [Stark 101](https://starkware.co/stark-
 
 I have added comments here and there explaining the code, but I recommend going through the stark101 videos, slides and github for better understanding.
 
-The only changes I have made are for parallel computing lagrange polynomials, and implemented the verifier.
+The only changes made are for parallel computing lagrange polynomials, and implemented the verifier.
 
 ## Structure:
 
