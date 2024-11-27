@@ -16,7 +16,7 @@ The only changes I have made are for parallel computing lagrange polynomials, an
 - [channel](./src/channel/) - Simulates prover and verifier inteactions.
 - [verifier](./src/verifier.rs) - verifier for verifying fibonnaci square programe.
 
-## Fri resources:
+## FRI Rśesources:
 
 - [How to code fri from scratch](https://blog.lambdaclass.com/how-to-code-fri-from-scratch/)
 - [A summary on the fri low degree testing](https://eprint.iacr.org/2022/1216.pdf)
